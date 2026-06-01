@@ -1,0 +1,65 @@
+# One-command demo: three app services + worker, an OpenTelemetry Collector,
+# Tempo for trace storage, and Grafana to view traces.
+#
+#   docker compose up --build
+#   curl -X POST localhost:8080/checkout -H 'content-type: application/json' \
+#        -d '{"order_id":"A-1001","amount":42.50}'
+#   open http://localhost:3000  (Explore -> Tempo -> Search)
+services:
+  gateway:
+    build: .
+    command: python gateway/app.py
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      BACKEND_URL: http://backend:8081
+    ports:
+      - "8080:8080"
+    depends_on: [backend, otel-collector]
+
+  backend:
+    build: .
+    command: python backend/app.py
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      QUEUE_DIR: /queue
+    volumes:
+      - queue:/queue
+    depends_on: [otel-collector]
+
+  worker:
+    build: .
+    command: python worker/worker.py
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      QUEUE_DIR: /queue
+    volumes:
+      - queue:/queue
+    depends_on: [otel-collector]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    depends_on: [tempo]
+
+  tempo:
+    image: grafana/tempo:2.6.0
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on: [tempo]
+
+volumes:
+  queue:

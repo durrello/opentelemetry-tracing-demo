@@ -1,0 +1,28 @@
+# OpenTelemetry Collector: receive OTLP from the services, batch, and export to
+# Tempo. Apps talk to the Collector, never directly to the backend — so swapping
+# Tempo for Jaeger/Datadog/X-Ray is a Collector config change, not an app change.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  debug:
+    verbosity: normal
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo, debug]

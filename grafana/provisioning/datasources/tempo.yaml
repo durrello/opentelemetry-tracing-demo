@@ -1,0 +1,10 @@
+# Auto-provision the Tempo datasource so Grafana is ready out of the box.
+apiVersion: 1
+datasources:
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: true
+    jsonData:
+      httpMethod: GET
