@@ -7,14 +7,26 @@ payload, so the consumer can re-parent its spans onto the producer's trace.
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
+import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional
 
 QUEUE_DIR = os.getenv("QUEUE_DIR", "/tmp/otel-demo-queue")
+
+# Monotonic, process-local sequence so messages enqueued within the same
+# millisecond still get a strict, stable FIFO ordering on disk.
+_seq = itertools.count()
+_seq_lock = threading.Lock()
+
+
+def _next_seq() -> int:
+    with _seq_lock:
+        return next(_seq)
 
 
 @dataclass
@@ -31,7 +43,9 @@ def _ensure_dir() -> None:
 def enqueue(message: Message) -> str:
     """Persist a message to the queue directory. Returns the message id."""
     _ensure_dir()
-    path = os.path.join(QUEUE_DIR, f"{int(time.time() * 1000)}-{message.id}.json")
+    # Pad the timestamp + sequence so lexicographic filename sort == FIFO order.
+    key = f"{int(time.time() * 1000):020d}-{_next_seq():010d}"
+    path = os.path.join(QUEUE_DIR, f"{key}-{message.id}.json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(asdict(message), fh)
     return message.id
